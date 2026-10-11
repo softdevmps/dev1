@@ -65,6 +65,10 @@ MINGW_ROOT=/tmp/sf-mingw MINGW_CC=/tmp/sf-mingw/usr/bin/x86_64-w64-mingw32-gcc-p
 
 Con PowerShell disponible, `pwsh -NoProfile -File tests/check-powershell.ps1` ejecuta sólo la validación de sintaxis. El log portable se conserva localmente en `out/validation/portable.log`; las salidas `out/` están ignoradas por Git. El EXE MinGW es auxiliar sin firma Authenticode; reconstruya Checker con MSVC para el flujo de validación Windows principal.
 
+## Paquete para el equipo Windows del usuario
+
+Se añadió Compilar-Windows.cmd y COMENZAR-WINDOWS.txt para compilar desde Windows sin ejecutar scripts Linux ni cambiar la política de PowerShell. Se corrigió Build.ps1 para pasar el array completo `@buildArgs` a MSBuild y seleccionar Visual Studio 2022 con herramientas C++. El archivo CMD y la compilación WDK siguen pendientes de ejecución en el equipo Windows; no se cuentan como PASS. El ZIP contiene fuentes y configuración, no un driver compilado o firmado.
+
 ## Acciones pendientes y limitaciones
 
 1. Compilar Debug y Release con Visual Studio/SDK/WDK compatibles, ejecutar análisis estático y corregir cualquier error real que reporte ese toolchain. No se puede anticipar un build aprobado sin ejecutarlo.

@@ -1,0 +1,71 @@
+STORAGEFILTER PARA WINDOWS 10/11 X64
+
+Este proyecto crea el controlador StorageFilter.sys y la aplicacion Checker.exe.
+Trabaja en tu equipo Windows. El codigo no necesita Linux.
+
+1. EXTRAER
+   Extrae todo el ZIP en una carpeta tuya, por ejemplo:
+   C:\Proyectos\StorageFilter
+   No ejecutes los archivos desde dentro del ZIP.
+
+2. HERRAMIENTAS
+   Si ya tienes Visual Studio 2022, SDK y WDK compatibles, pasa al punto 3.
+   En caso contrario instala:
+   - Visual Studio 2022 Community o Build Tools, con "Desarrollo para el
+     escritorio con C++", herramientas MSVC v143 y herramientas x64.
+     https://visualstudio.microsoft.com/vs/older-downloads/
+   - Windows SDK y WDK compatibles, con la integracion WDK de Visual Studio.
+     Sigue la tabla oficial para elegir versiones que coincidan:
+     https://learn.microsoft.com/windows-hardware/drivers/download-the-wdk
+   - Si WDK requiere bibliotecas MSVC Spectre, agregalas desde Visual Studio
+     Installer para la version del compilador elegida.
+
+   WDK significa Windows Driver Kit: es el kit oficial de Microsoft para
+   crear controladores. Tener Windows instalado no incluye estas herramientas.
+
+3. COMPILAR
+   Haz doble clic en Compilar-Windows.cmd.
+   No necesitas abrir PowerShell ni cambiar su politica de ejecucion.
+   El archivo busca Visual Studio 2022 y compila en Debug x64 con analisis.
+   La ventana permanece abierta para que puedas leer el resultado.
+
+   Si todo termina correctamente, los archivos aparecen aqui:
+   out\x64\Debug\driver\StorageFilter.sys
+   out\x64\Debug\checker\Checker.exe
+
+   Puedes compilar Release desde una ventana de comandos en esta carpeta:
+   Compilar-Windows.cmd Release
+
+4. SI FALLA
+   El error completo esta en:
+   out\compilacion-Debug.log
+   o out\compilacion-Release.log
+
+   MSB8020: falta WDK o su integracion con Visual Studio.
+   Error de cabeceras/bibliotecas: revisar que SDK y WDK sean compatibles.
+   Error Cxxxx o LNKxxxx: conservar el primer error y su archivo/linea.
+   Envia el texto del primer error para continuar con su correccion.
+
+5. FIRMA E INSTALACION
+   Un archivo .sys compilado no es todavia un controlador instalable.
+   Hace falta generar el INF para tu disco virtual secundario, validar el
+   paquete y obtener la firma oficial de Microsoft antes de cargarlo con
+   Secure Boot y las protecciones normales activas.
+
+   El procedimiento esta en:
+   docs\build-sign-install.md
+
+   No instales este filtro en el disco de arranque ni en un equipo de
+   produccion. La validacion debe hacerse primero en una maquina virtual
+   Windows con un disco secundario descartable.
+
+6. PRUEBAS
+   Checker consulta el almacenamiento y verifica los resultados.
+   No es el controlador y no puede instalar StorageFilter.sys.
+   Las pruebas antes/despues y de concurrencia estan en:
+   docs\testing.md
+
+ESTADO ACTUAL
+El codigo y los proyectos estan creados. Falta ejecutar esta compilacion
+con WDK en Windows y corregir cualquier error que aparezca, obtener la firma
+y ejecutar las pruebas. No se afirma que el driver ya funcione en Windows.

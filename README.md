@@ -9,6 +9,10 @@ El repositorio original estaba vacío y sin commits. Se han creado el controlado
 - [Pruebas reproducibles en VM](docs/testing.md)
 - [Resultados y pendientes](docs/validation.md)
 
+## Empezar en tu equipo Windows
+
+Extrae el proyecto y abre `COMENZAR-WINDOWS.txt`. Con Visual Studio 2022 y WDK instalados, haz doble clic en `Compilar-Windows.cmd`: compila driver y Checker, muestra el resultado y conserva el log. El driver generado estará en `out\x64\Debug\driver\StorageFilter.sys`; requiere firma oficial antes de instalarlo.
+
 ## Archivos
 
 | Ruta | Función |
