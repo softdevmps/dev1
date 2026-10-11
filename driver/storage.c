@@ -21,7 +21,7 @@ static NTSTATUS SfStorageCompletion(PDEVICE_OBJECT device, PIRP irp, PVOID conte
     ++filter->Record.QueriesCompleted;
     if (!successful) ++filter->Record.QueryFailures;
     if (descriptor.Flags & (SF_PARSE_BAD_SIZE | SF_PARSE_BAD_OFFSET |
-        SF_PARSE_UNTERMINATED | SF_PARSE_BAD_RAW_LENGTH | SF_PARSE_TOO_SHORT))
+        SF_PARSE_UNTERMINATED | SF_PARSE_BAD_RAW_LENGTH | SF_PARSE_TOO_SHORT | SF_PARSE_BAD_VERSION))
         ++filter->Record.MalformedResponses;
     filter->Record.LastQueryStatus = irp->IoStatus.Status;
     filter->Record.LastReturnedBytes = bytes;

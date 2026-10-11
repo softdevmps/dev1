@@ -12,6 +12,7 @@ void SfInspectDescriptor(const unsigned char *data, SF_U32 length,
     info->Removable = 0; info->StringPresence = 0;
     if (data == 0 || length < 8) { info->Flags = SF_PARSE_TOO_SHORT; return; }
     info->DeclaredSize = Read32(data + 4);
+    if (Read32(data) < 36) { info->Flags = SF_PARSE_BAD_VERSION; return; }
     if (info->DeclaredSize < 36) { info->Flags = SF_PARSE_BAD_SIZE; return; }
     if (length < info->DeclaredSize) info->Flags |= SF_PARSE_TRUNCATED;
     limit = length < info->DeclaredSize ? length : info->DeclaredSize;

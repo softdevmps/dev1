@@ -24,6 +24,7 @@ typedef uint64_t SF_U64;
 #define SF_PARSE_UNTERMINATED 16u
 #define SF_PARSE_BAD_RAW_LENGTH 32u
 #define SF_PARSE_TOO_SHORT 64u
+#define SF_PARSE_BAD_VERSION 128u
 #define SF_STATE_STARTED 1u
 #define SF_STATE_SURPRISE_REMOVED 2u
 #pragma pack(push, 8)
@@ -60,4 +61,7 @@ typedef struct SF_SNAPSHOT {
     SF_DEVICE_RECORD Devices[SF_MAX_DEVICES];
 } SF_SNAPSHOT;
 #pragma pack(pop)
+/* Fail the build if a compiler changes the kernel/user wire ABI. */
+typedef char SF_ASSERT_RECORD_SIZE[(sizeof(SF_DEVICE_RECORD) == 96) ? 1 : -1];
+typedef char SF_ASSERT_SNAPSHOT_SIZE[(sizeof(SF_SNAPSHOT) == 1568) ? 1 : -1];
 #endif

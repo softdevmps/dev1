@@ -1,3 +1,4 @@
+#Requires -RunAsAdministrator
 [CmdletBinding()]
 param([Parameter(Mandatory)][ValidateRange(1,1024)][int]$DiskNumber,
       [Parameter(Mandatory)][switch]$LabVm,
@@ -27,6 +28,7 @@ if (!(Test-Path $binary)) { throw 'Build the driver first.' }
 if (Test-Path $OutputDirectory) { throw 'Use a new output directory to preserve existing packages.' }
 New-Item -ItemType Directory -Path $OutputDirectory | Out-Null
 $template = [IO.File]::ReadAllText("$root\package\StorageFilter.inf.in")
+$template = $template.Replace('DriverVer=10/10/2026,1.0.0.0', ('DriverVer=' + [DateTime]::Now.ToString('MM/dd/yyyy', [Globalization.CultureInfo]::InvariantCulture) + ',1.0.0.0'))
 [IO.File]::WriteAllText((Join-Path $OutputDirectory 'StorageFilter.inf'), $template.Replace('__LAB_HARDWARE_ID__', $hardwareId), [Text.Encoding]::ASCII)
 Copy-Item $binary (Join-Path $OutputDirectory 'StorageFilter.sys')
 @{ DiskNumber=$DiskNumber; InstanceId=$device[0].PNPDeviceID; HardwareId=$hardwareId;

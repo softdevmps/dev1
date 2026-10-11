@@ -5,9 +5,11 @@
 #include <stdlib.h>
 #include <wchar.h>
 #include <string.h>
+#include <process.h>
+#include <errno.h>
 #include "../shared/descriptor.h"
 #define MAX_DESCRIPTOR 65536u
-#define BAD_FLAGS (SF_PARSE_BAD_SIZE | SF_PARSE_BAD_OFFSET | SF_PARSE_UNTERMINATED | SF_PARSE_BAD_RAW_LENGTH | SF_PARSE_TOO_SHORT | SF_PARSE_HEADER_ONLY | SF_PARSE_TRUNCATED)
+#define BAD_FLAGS (SF_PARSE_BAD_SIZE | SF_PARSE_BAD_OFFSET | SF_PARSE_UNTERMINATED | SF_PARSE_BAD_RAW_LENGTH | SF_PARSE_TOO_SHORT | SF_PARSE_HEADER_ONLY | SF_PARSE_TRUNCATED | SF_PARSE_BAD_VERSION)
 typedef struct BLOB { unsigned char *Data; DWORD Length; } BLOB;
 typedef struct WORK { DWORD Disk, Iterations; const BLOB *Baseline; LONG Failures; } WORK;
 static void Error(const wchar_t *operation)
@@ -79,6 +81,26 @@ static int SameIdentifiers(const BLOB *a, const BLOB *b)
     }
     return 1;
 }
+static int DescribeDisk(HANDLE disk, DWORD expectedNumber)
+{
+    STORAGE_DEVICE_NUMBER number;
+    GET_LENGTH_INFORMATION length;
+    DWORD returned = 0;
+    if (!DeviceIoControl(disk, IOCTL_STORAGE_GET_DEVICE_NUMBER, NULL, 0,
+        &number, sizeof(number), &returned, NULL)) { Error(L"device number"); return 0; }
+    if (returned != sizeof(number) || number.DeviceType != FILE_DEVICE_DISK || number.DeviceNumber != expectedNumber) {
+        fputs("Unexpected physical disk mapping\n", stderr); return 0;
+    }
+    if (!DeviceIoControl(disk, IOCTL_DISK_GET_LENGTH_INFO, NULL, 0,
+        &length, sizeof(length), &returned, NULL)) { Error(L"disk length"); return 0; }
+    if (returned != sizeof(length) || length.Length.QuadPart <= 0) {
+        fputs("Invalid disk length\n", stderr); return 0;
+    }
+    printf("Physical disk=%lu length=%llu bytes\n", number.DeviceNumber,
+           (unsigned long long)length.Length.QuadPart);
+    return 1;
+}
+
 static HANDLE OpenControl(void)
 {
     return CreateFileW(L"\\\\.\\StorageFilterCtl", GENERIC_READ,
@@ -89,12 +111,14 @@ static int Snapshot(SF_SNAPSHOT *snapshot, int print)
     DWORD returned = 0, i;
     HANDLE control = OpenControl();
     BOOL success;
+    DWORD error;
     if (control == INVALID_HANDLE_VALUE) { Error(L"open filter control"); return 0; }
     ZeroMemory(snapshot, sizeof(*snapshot));
     success = DeviceIoControl(control, SF_IOCTL_SNAPSHOT, NULL, 0,
         snapshot, sizeof(*snapshot), &returned, NULL);
+    error = GetLastError();
     CloseHandle(control);
-    if (!success) { Error(L"snapshot"); return 0; }
+    if (!success) { SetLastError(error); Error(L"snapshot"); return 0; }
     if (returned != sizeof(*snapshot) || snapshot->Version != SF_PROTOCOL_VERSION ||
         snapshot->Size != sizeof(*snapshot) || snapshot->RecordsReturned > SF_MAX_DEVICES ||
         snapshot->RecordsReturned > snapshot->DeviceCount) {
@@ -148,7 +172,7 @@ static int LoadBlob(const wchar_t *path, BLOB *blob)
     if (info.Flags & BAD_FLAGS) { free(blob->Data); blob->Data = NULL; return 0; }
     return 1;
 }
-static DWORD WINAPI Worker(LPVOID argument)
+static unsigned __stdcall Worker(void *argument)
 {
     WORK *work = argument;
     HANDLE disk = OpenDisk(work->Disk);
@@ -182,12 +206,15 @@ static int Stress(DWORD diskNumber, DWORD threadCount, DWORD iterations)
     ZeroMemory(work, sizeof(work));
     for (i = 0; i < threadCount; ++i) {
         work[i].Disk = diskNumber; work[i].Iterations = iterations; work[i].Baseline = &baseline;
-        threads[i] = CreateThread(NULL, 0, Worker, &work[i], 0, NULL);
-        if (threads[i] == NULL) { Error(L"CreateThread"); success = 0; break; }
+        threads[i] = (HANDLE)_beginthreadex(NULL, 0, Worker, &work[i], 0, NULL);
+        if (threads[i] == NULL) { fprintf(stderr, "_beginthreadex: %s\n", strerror(errno)); success = 0; break; }
         ++created;
     }
     for (i = 0; i < created; ++i) {
-        if (WaitForSingleObject(threads[i], INFINITE) != WAIT_OBJECT_0) success = 0;
+        if (WaitForSingleObject(threads[i], INFINITE) != WAIT_OBJECT_0) {
+            /* Do not free worker data while an unjoined thread may still use it. */
+            Error(L"worker wait"); ExitProcess(1);
+        }
         if (work[i].Failures) success = 0;
         CloseHandle(threads[i]);
     }
@@ -264,7 +291,9 @@ int wmain(int argc, wchar_t **argv)
           (argc == 4 && (wcscmp(argv[1], L"baseline") == 0 || wcscmp(argv[1], L"compare") == 0)))) goto Usage;
     disk = OpenDisk(diskNumber);
     if (disk == INVALID_HANDLE_VALUE) { Error(L"open disk"); return 1; }
-    success = Query(disk, &value); CloseHandle(disk);
+    success = DescribeDisk(disk, diskNumber);
+    if (success) success = Query(disk, &value);
+    CloseHandle(disk);
     if (!success) return 1;
     if (wcscmp(argv[1], L"baseline") == 0) success = SaveBlob(argv[3], &value);
     else if (wcscmp(argv[1], L"compare") == 0) {

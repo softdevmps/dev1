@@ -23,7 +23,12 @@ NTSTATUS SfPnp(PDEVICE_OBJECT device, PIRP irp)
         IoCopyCurrentIrpStackLocationToNext(irp);
         IoSetCompletionRoutine(irp, SfStartCompletion, &event, TRUE, TRUE, TRUE);
         status = IoCallDriver(filter->Lower, irp);
-        if (status == STATUS_PENDING) KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
+        if (status == STATUS_PENDING) {
+            NTSTATUS waitStatus = KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
+            /* Nonalertable, no-timeout event wait has only the success outcome. */
+            NT_ASSERT(waitStatus == STATUS_SUCCESS);
+            UNREFERENCED_PARAMETER(waitStatus);
+        }
         status = irp->IoStatus.Status;
         if (NT_SUCCESS(status)) {
             SfReadHardware(filter);

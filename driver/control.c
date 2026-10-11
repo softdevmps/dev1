@@ -49,7 +49,8 @@ void SfUnpublish(SF_FILTER *filter)
     if (SfGlobal.DeviceCount == 0 && SfGlobal.Control != NULL) {
         control = SfGlobal.Control; SfGlobal.Control = NULL;
         common = control->DeviceExtension;
-        IoDeleteSymbolicLink(&SfControlLink);
+        status = IoDeleteSymbolicLink(&SfControlLink);
+        if (!NT_SUCCESS(status)) SF_TRACE("control unlink status=0x%08lx\n", status);
         status = IoAcquireRemoveLock(&common->RemoveLock, control);
         NT_ASSERT(NT_SUCCESS(status));
         if (NT_SUCCESS(status)) IoReleaseRemoveLockAndWait(&common->RemoveLock, control);

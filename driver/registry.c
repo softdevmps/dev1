@@ -1,5 +1,52 @@
 #include "filter.h"
-#include <ntstrsafe.h>
+static void SfCloseKey(HANDLE key)
+{
+    NTSTATUS status = ZwClose(key);
+    if (!NT_SUCCESS(status)) SF_TRACE("key close status=0x%08lx\n", status);
+}
+/* Resolve CurrentControlSet aliases before comparing callback object names. */
+static NTSTATUS SfCanonicalServicePath(PUNICODE_STRING path)
+{
+    OBJECT_ATTRIBUTES attributes;
+    HANDLE key;
+    PKEY_NAME_INFORMATION name;
+    ULONG required = 0, capacity;
+    NTSTATUS status;
+    InitializeObjectAttributes(&attributes, path, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
+    status = ZwOpenKey(&key, KEY_READ, &attributes);
+    if (!NT_SUCCESS(status)) return status;
+    status = ZwQueryKey(key, KeyNameInformation, NULL, 0, &required);
+    if ((status != STATUS_BUFFER_TOO_SMALL && status != STATUS_BUFFER_OVERFLOW) ||
+        required < FIELD_OFFSET(KEY_NAME_INFORMATION, Name) || required > 65536) {
+        SfCloseKey(key);
+        return NT_SUCCESS(status) ? STATUS_INVALID_BUFFER_SIZE : status;
+    }
+    name = ExAllocatePoolWithTag(NonPagedPoolNx, required, SF_TAG);
+    if (name == NULL) { SfCloseKey(key); return STATUS_INSUFFICIENT_RESOURCES; }
+    capacity = required;
+    status = ZwQueryKey(key, KeyNameInformation, name, capacity, &required);
+    SfCloseKey(key);
+    if (NT_SUCCESS(status)) {
+        if (required > capacity || required < FIELD_OFFSET(KEY_NAME_INFORMATION, Name) ||
+            name->NameLength > required - FIELD_OFFSET(KEY_NAME_INFORMATION, Name) ||
+            name->NameLength > MAXUSHORT - sizeof(WCHAR) || (name->NameLength & 1)) {
+            status = STATUS_INVALID_BUFFER_SIZE;
+        } else {
+            SfGlobal.RegistryPath.Buffer = ExAllocatePoolWithTag(NonPagedPoolNx,
+                name->NameLength + sizeof(WCHAR), SF_TAG);
+            if (SfGlobal.RegistryPath.Buffer == NULL) status = STATUS_INSUFFICIENT_RESOURCES;
+            else {
+                SfGlobal.RegistryPath.Length = (USHORT)name->NameLength;
+                SfGlobal.RegistryPath.MaximumLength = (USHORT)(name->NameLength + sizeof(WCHAR));
+                RtlCopyMemory(SfGlobal.RegistryPath.Buffer, name->Name, name->NameLength);
+                SfGlobal.RegistryPath.Buffer[name->NameLength / sizeof(WCHAR)] = L'\0';
+            }
+        }
+    }
+    ExFreePoolWithTag(name, SF_TAG);
+    return status;
+}
+
 static NTSTATUS SfRegistryCallback(PVOID context, PVOID argument1, PVOID argument2)
 {
     REG_NOTIFY_CLASS operation = (REG_NOTIFY_CLASS)(ULONG_PTR)argument1;
@@ -34,19 +81,15 @@ void SfRegistryInitialize(PUNICODE_STRING registryPath)
     SIZE_T bytes = registryPath->Length + sizeof(L"\\Parameters");
     NTSTATUS status;
     SfGlobal.RegistryStatus = STATUS_NOT_SUPPORTED;
-    SfGlobal.RegistryPath.Buffer = ExAllocatePoolWithTag(NonPagedPoolNx,
-        registryPath->Length + sizeof(WCHAR), SF_TAG);
-    if (SfGlobal.RegistryPath.Buffer == NULL) {
-        SfGlobal.RegistryStatus = STATUS_INSUFFICIENT_RESOURCES; return;
+    if (bytes > MAXUSHORT || registryPath->Length > MAXUSHORT - sizeof(WCHAR)) {
+        SfGlobal.RegistryStatus = STATUS_NAME_TOO_LONG; return;
     }
-    SfGlobal.RegistryPath.Length = registryPath->Length;
-    SfGlobal.RegistryPath.MaximumLength = registryPath->Length + sizeof(WCHAR);
-    RtlCopyMemory(SfGlobal.RegistryPath.Buffer, registryPath->Buffer, registryPath->Length);
-    SfGlobal.RegistryPath.Buffer[registryPath->Length / sizeof(WCHAR)] = L'\0';
+    status = SfCanonicalServicePath(registryPath);
+    if (!NT_SUCCESS(status)) { SfGlobal.RegistryStatus = status; return; }
     parameters = ExAllocatePoolWithTag(PagedPool, bytes, SF_TAG);
     if (parameters == NULL) { SfGlobal.RegistryStatus = STATUS_INSUFFICIENT_RESOURCES; return; }
-    status = RtlStringCbPrintfW(parameters, bytes, L"%wZ\\Parameters", registryPath);
-    if (!NT_SUCCESS(status)) { ExFreePoolWithTag(parameters, SF_TAG); SfGlobal.RegistryStatus = status; return; }
+    RtlCopyMemory(parameters, registryPath->Buffer, registryPath->Length);
+    RtlCopyMemory((PUCHAR)parameters + registryPath->Length, L"\\Parameters", sizeof(L"\\Parameters"));
     RtlInitEmptyUnicodeString(&altitude, altitudeBuffer, sizeof(altitudeBuffer));
     RtlZeroMemory(table, sizeof(table));
     table[0].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_REQUIRED | RTL_QUERY_REGISTRY_TYPECHECK;
