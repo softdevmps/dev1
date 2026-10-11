@@ -50,7 +50,7 @@ NTSTATUS SfAddDevice(PDRIVER_OBJECT driver, PDEVICE_OBJECT pdo)
     if (!NT_SUCCESS(status)) {
         IoDetachDevice(filter->Lower); IoDeleteDevice(device); return status;
     }
-    device->Flags &= ~DO_DEVICE_INITIALIZING;
+    device->Flags &= ~(ULONG)DO_DEVICE_INITIALIZING;
     SF_TRACE("attached instance=%lu\n", filter->Record.Instance);
     return STATUS_SUCCESS;
 }

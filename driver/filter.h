@@ -6,7 +6,8 @@
 #include <wdmsec.h>
 #include "../shared/protocol.h"
 #include "../shared/descriptor.h"
-#define SF_TAG 'tlFS'
+#include "../shared/transform.h"
+#define SF_TAG 0x746c4653u /* Same pool tag value as 'tlFS'. */
 #define SF_FILTER_KIND 1u
 #define SF_CONTROL_KIND 2u
 #define SF_TRACE(...) DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "StorageFilter: " __VA_ARGS__)
@@ -21,6 +22,17 @@ typedef struct SF_FILTER {
     PDEVICE_OBJECT Pdo;
     LIST_ENTRY Link;
     SF_DEVICE_RECORD Record; /* Protected by global ListLock. */
+    BOOLEAN DiskMapped;
+    BOOLEAN UsageRestricted; /* Sticky until detach after special-path notification. */
+    ULONG DiskNumber;
+    ULONG OriginalSerialCapacity;
+    SF_U64 Epoch;
+    SF_U64 ProfileGeneration;
+    SF_U64 Transformed;
+    SF_U64 TransformSkipped;
+    ULONG TransformResult;
+    ULONG SerialLength;
+    unsigned char Serial[SF_SERIAL_BYTES];
 } SF_FILTER;
 typedef struct SF_GLOBAL {
     PDRIVER_OBJECT Driver;

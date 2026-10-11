@@ -33,7 +33,10 @@ NTSTATUS SfPnp(PDEVICE_OBJECT device, PIRP irp)
         if (NT_SUCCESS(status)) {
             SfReadHardware(filter);
             KeAcquireSpinLock(&SfGlobal.ListLock, &oldIrql);
-            filter->Record.State = SF_STATE_STARTED;
+            ++filter->Epoch; ++filter->ProfileGeneration;
+            filter->DiskMapped = FALSE; filter->OriginalSerialCapacity = 0;
+            filter->SerialLength = 0; RtlZeroMemory(filter->Serial, sizeof(filter->Serial));
+            filter->Record.State = SF_STATE_STARTED | (filter->UsageRestricted ? SF_STATE_USAGE_RESTRICTED : 0u);
             KeReleaseSpinLock(&SfGlobal.ListLock, oldIrql);
         }
         SF_TRACE("start instance=%lu status=0x%08lx\n", filter->Record.Instance, status);
@@ -43,16 +46,27 @@ NTSTATUS SfPnp(PDEVICE_OBJECT device, PIRP irp)
     case IRP_MN_DEVICE_USAGE_NOTIFICATION:
         /* All dispatch/completion code is nonpageable. Stay nonpageable once
            the stack announces paging/hibernation/crash-dump use. */
-        device->Flags &= ~DO_POWER_PAGABLE;
+        device->Flags &= ~(ULONG)DO_POWER_PAGABLE;
+        if (stack->Parameters.UsageNotification.InPath) {
+            KeAcquireSpinLock(&SfGlobal.ListLock, &oldIrql);
+            filter->UsageRestricted = TRUE; filter->Record.State |= SF_STATE_USAGE_RESTRICTED;
+            ++filter->ProfileGeneration;
+            filter->SerialLength = 0; RtlZeroMemory(filter->Serial, sizeof(filter->Serial));
+            KeReleaseSpinLock(&SfGlobal.ListLock, oldIrql);
+        }
         return SfForward(device, irp);
     case IRP_MN_STOP_DEVICE:
         KeAcquireSpinLock(&SfGlobal.ListLock, &oldIrql);
         filter->Record.State &= ~SF_STATE_STARTED;
+        ++filter->Epoch; ++filter->ProfileGeneration;
+        filter->SerialLength = 0; RtlZeroMemory(filter->Serial, sizeof(filter->Serial));
         KeReleaseSpinLock(&SfGlobal.ListLock, oldIrql);
         return SfForward(device, irp);
     case IRP_MN_SURPRISE_REMOVAL:
         KeAcquireSpinLock(&SfGlobal.ListLock, &oldIrql);
         filter->Record.State = SF_STATE_SURPRISE_REMOVED;
+        ++filter->Epoch; ++filter->ProfileGeneration;
+        filter->SerialLength = 0; RtlZeroMemory(filter->Serial, sizeof(filter->Serial));
         KeReleaseSpinLock(&SfGlobal.ListLock, oldIrql);
         return SfForward(device, irp);
     case IRP_MN_REMOVE_DEVICE:

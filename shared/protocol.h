@@ -1,6 +1,6 @@
 #ifndef SF_PROTOCOL_H
 #define SF_PROTOCOL_H
-/* Fixed-width wire layout: contains no pointers and no storage identifiers. */
+/* Fixed-width wire layout. Original storage identifiers are never exported. */
 #ifdef SF_KERNEL
 #include <ntddk.h>
 typedef ULONG SF_U32;
@@ -17,6 +17,15 @@ typedef uint64_t SF_U64;
 #define SF_DEVICE_TYPE 0x8337u
 /* METHOD_BUFFERED, FILE_READ_DATA; private vendor function. */
 #define SF_IOCTL_SNAPSHOT ((SF_DEVICE_TYPE << 16) | (1u << 14) | (0x800u << 2))
+#define SF_IOCTL_SERIAL_SET ((SF_DEVICE_TYPE << 16) | (3u << 14) | (0x801u << 2))
+#define SF_IOCTL_SERIAL_STATUS ((SF_DEVICE_TYPE << 16) | (1u << 14) | (0x802u << 2))
+#define SF_SERIAL_BYTES 32u
+#define SF_SERIAL_ORIGINAL_LIMIT 255u
+#define SF_SERIAL_ENABLE 1u
+#define SF_SERIAL_ACK_SECONDARY 2u
+#define SF_SERIAL_STATE_ENABLED 1u
+#define SF_SERIAL_STATE_MAPPED 2u
+#define SF_SERIAL_STATE_RESTRICTED 4u
 #define SF_PARSE_HEADER_ONLY 1u
 #define SF_PARSE_TRUNCATED 2u
 #define SF_PARSE_BAD_SIZE 4u
@@ -27,7 +36,22 @@ typedef uint64_t SF_U64;
 #define SF_PARSE_BAD_VERSION 128u
 #define SF_STATE_STARTED 1u
 #define SF_STATE_SURPRISE_REMOVED 2u
+#define SF_STATE_USAGE_RESTRICTED 4u
 #pragma pack(push, 8)
+typedef struct SF_SERIAL_TARGET {
+    SF_U32 Version, Size, Instance, DiskNumber;
+} SF_SERIAL_TARGET;
+typedef struct SF_SERIAL_UPDATE {
+    SF_U32 Version, Size, Instance, DiskNumber;
+    SF_U32 Flags, SerialLength, Reserved;
+    unsigned char Serial[SF_SERIAL_BYTES]; /* Supplied replacement, never firmware data. */
+    SF_U64 ExpectedGeneration; /* Compare-and-set; never overwrite a newer profile. */
+} SF_SERIAL_UPDATE;
+typedef struct SF_SERIAL_STATUS {
+    SF_U32 Version, Size, Instance, DiskNumber;
+    SF_U32 Flags, SerialLength, OriginalCapacity, LastResult;
+    SF_U64 Generation, Transformed, Skipped;
+} SF_SERIAL_STATUS;
 typedef struct SF_DESCRIPTOR_INFO {
     SF_U32 Flags;
     SF_U32 DeclaredSize;
@@ -64,4 +88,7 @@ typedef struct SF_SNAPSHOT {
 /* Fail the build if a compiler changes the kernel/user wire ABI. */
 typedef char SF_ASSERT_RECORD_SIZE[(sizeof(SF_DEVICE_RECORD) == 96) ? 1 : -1];
 typedef char SF_ASSERT_SNAPSHOT_SIZE[(sizeof(SF_SNAPSHOT) == 1568) ? 1 : -1];
+typedef char SF_ASSERT_SERIAL_TARGET[(sizeof(SF_SERIAL_TARGET) == 16) ? 1 : -1];
+typedef char SF_ASSERT_SERIAL_UPDATE[(sizeof(SF_SERIAL_UPDATE) == 72) ? 1 : -1];
+typedef char SF_ASSERT_SERIAL_STATUS[(sizeof(SF_SERIAL_STATUS) == 56) ? 1 : -1];
 #endif

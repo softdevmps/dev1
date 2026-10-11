@@ -3,6 +3,76 @@
 static const GUID SfControlClass = {0x7fb58f80,0x7f0b,0x4866,{0xa8,0x6b,0x74,0x28,0x3d,0xc3,0x58,0x35}};
 static UNICODE_STRING SfControlName = RTL_CONSTANT_STRING(L"\\Device\\StorageFilterCtl");
 static UNICODE_STRING SfControlLink = RTL_CONSTANT_STRING(L"\\DosDevices\\StorageFilterCtl");
+static void SfSerialStatus(SF_FILTER *filter, SF_SERIAL_STATUS *output)
+{
+    RtlZeroMemory(output, sizeof(*output));
+    output->Version = SF_PROTOCOL_VERSION; output->Size = sizeof(*output);
+    output->Instance = filter->Record.Instance; output->DiskNumber = filter->DiskNumber;
+    output->Flags = (filter->SerialLength != 0 ? SF_SERIAL_STATE_ENABLED : 0u) |
+        (filter->DiskMapped ? SF_SERIAL_STATE_MAPPED : 0u) |
+        (filter->UsageRestricted ? SF_SERIAL_STATE_RESTRICTED : 0u);
+    output->SerialLength = filter->SerialLength; output->OriginalCapacity = filter->OriginalSerialCapacity;
+    output->LastResult = filter->TransformResult; output->Generation = filter->ProfileGeneration;
+    output->Transformed = filter->Transformed; output->Skipped = filter->TransformSkipped;
+}
+static NTSTATUS SfSerialControl(PIRP irp, PIO_STACK_LOCATION stack, ULONG_PTR *information)
+{
+    SF_SERIAL_UPDATE update;
+    SF_SERIAL_TARGET target;
+    SF_SERIAL_STATUS output;
+    BOOLEAN write = stack->Parameters.DeviceIoControl.IoControlCode == SF_IOCTL_SERIAL_SET;
+    ULONG inputLength = write ? sizeof(update) : sizeof(target);
+    PLIST_ENTRY entry;
+    SF_FILTER *filter = NULL;
+    KIRQL oldIrql;
+    NTSTATUS status = STATUS_NO_SUCH_DEVICE;
+    if (stack->Parameters.DeviceIoControl.InputBufferLength != inputLength ||
+        irp->AssociatedIrp.SystemBuffer == NULL) return STATUS_INVALID_PARAMETER;
+    if (stack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(output)) return STATUS_BUFFER_TOO_SMALL;
+    RtlZeroMemory(&update, sizeof(update));
+    if (write) {
+        RtlCopyMemory(&update, irp->AssociatedIrp.SystemBuffer, sizeof(update));
+        if (!SfValidateSerialUpdate(&update)) return STATUS_INVALID_PARAMETER;
+        target.Version = update.Version; target.Size = sizeof(target);
+        target.Instance = update.Instance; target.DiskNumber = update.DiskNumber;
+    } else {
+        RtlCopyMemory(&target, irp->AssociatedIrp.SystemBuffer, sizeof(target));
+        if (target.Version != SF_PROTOCOL_VERSION || target.Size != sizeof(target) ||
+            target.Instance == 0 || target.DiskNumber == 0 || target.DiskNumber > 1024) return STATUS_INVALID_PARAMETER;
+    }
+    KeAcquireSpinLock(&SfGlobal.ListLock, &oldIrql);
+    for (entry = SfGlobal.Devices.Flink; entry != &SfGlobal.Devices; entry = entry->Flink) {
+        SF_FILTER *candidate = CONTAINING_RECORD(entry, SF_FILTER, Link);
+        if (candidate->Record.Instance == target.Instance) { filter = candidate; break; }
+    }
+    if (filter != NULL) {
+        if (!filter->DiskMapped) status = STATUS_DEVICE_NOT_READY;
+        else if (filter->DiskNumber != target.DiskNumber) status = STATUS_INVALID_PARAMETER;
+        else if (write && update.ExpectedGeneration != filter->ProfileGeneration) status = STATUS_REVISION_MISMATCH;
+        else if (write && update.Flags != 0 && (!(filter->Record.State & SF_STATE_STARTED) ||
+                 (filter->Record.State & SF_STATE_SURPRISE_REMOVED))) status = STATUS_DEVICE_NOT_READY;
+        else if (write && update.Flags != 0 && filter->UsageRestricted) status = STATUS_ACCESS_DENIED;
+        else if (write && update.Flags != 0 && filter->OriginalSerialCapacity == 0) status = STATUS_DEVICE_NOT_READY;
+        else if (write && update.SerialLength > filter->OriginalSerialCapacity) status = STATUS_BUFFER_TOO_SMALL;
+        else {
+            if (write) {
+                ++filter->ProfileGeneration;
+                filter->SerialLength = update.SerialLength;
+                RtlCopyMemory(filter->Serial, update.Serial, sizeof(filter->Serial));
+                filter->TransformResult = SF_TRANSFORM_NOT_ACTIVE;
+            }
+            SfSerialStatus(filter, &output); status = STATUS_SUCCESS;
+        }
+    }
+    KeReleaseSpinLock(&SfGlobal.ListLock, oldIrql);
+    if (NT_SUCCESS(status)) {
+        RtlCopyMemory(irp->AssociatedIrp.SystemBuffer, &output, sizeof(output));
+        *information = sizeof(output);
+        if (write) SF_TRACE("serial profile instance=%lu enabled=%lu\n", output.Instance,
+                           (ULONG)((output.Flags & SF_SERIAL_STATE_ENABLED) != 0));
+    }
+    return status;
+}
 NTSTATUS SfPublish(SF_FILTER *filter)
 {
     NTSTATUS status = STATUS_SUCCESS;
@@ -23,7 +93,7 @@ NTSTATUS SfPublish(SF_FILTER *filter)
         status = IoCreateSymbolicLink(&SfControlLink, &SfControlName);
         if (!NT_SUCCESS(status)) { IoDeleteDevice(control); goto Exit; }
         SfGlobal.Control = control;
-        control->Flags &= ~DO_DEVICE_INITIALIZING;
+        control->Flags &= ~(ULONG)DO_DEVICE_INITIALIZING;
     }
     KeAcquireSpinLock(&SfGlobal.ListLock, &oldIrql);
     InsertTailList(&SfGlobal.Devices, &filter->Link);
@@ -78,6 +148,9 @@ NTSTATUS SfControlDispatch(PDEVICE_OBJECT device, PIRP irp)
         status = stack->FileObject->FileName.Length == 0 ? STATUS_SUCCESS : STATUS_OBJECT_NAME_NOT_FOUND;
     } else if (stack->MajorFunction != IRP_MJ_DEVICE_CONTROL) {
         status = STATUS_INVALID_DEVICE_REQUEST;
+    } else if (stack->Parameters.DeviceIoControl.IoControlCode == SF_IOCTL_SERIAL_SET ||
+               stack->Parameters.DeviceIoControl.IoControlCode == SF_IOCTL_SERIAL_STATUS) {
+        status = SfSerialControl(irp, stack, &information);
     } else if (stack->Parameters.DeviceIoControl.IoControlCode != SF_IOCTL_SNAPSHOT) {
         status = STATUS_INVALID_DEVICE_REQUEST;
     } else if (stack->Parameters.DeviceIoControl.InputBufferLength != 0) {

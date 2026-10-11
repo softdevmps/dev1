@@ -38,11 +38,13 @@
     <ClCompile Include="hardware.c" />
     <ClCompile Include="registry.c" />
     <ClCompile Include="../shared/descriptor.c" />
+    <ClCompile Include="../shared/transform.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="filter.h" />
     <ClInclude Include="../shared/protocol.h" />
     <ClInclude Include="../shared/descriptor.h" />
+    <ClInclude Include="../shared/transform.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

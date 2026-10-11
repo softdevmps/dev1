@@ -21,7 +21,9 @@ assert 'AddFilter=StorageFilter,,FilterPosition' in inf
 assert 'ServiceBinary=%13%\\StorageFilter.sys' in inf
 assert 'UpperFilters' not in inf and 'LowerFilters' not in inf
 assert 'ClassGuid={e2f84ce7-8efa-411c-aa69-97454ca4cb57}' in inf
-# Detect accidental writes into the completed storage response.
+# Query input fields remain read-only. Serial writes use the shared bounded
+# transform, gated by an explicitly activated per-instance control profile.
 storage = (root / 'driver/storage.c').read_text()
 assert not re.search(r'(?:SystemBuffer\s*\[[^]]*\]|input->\w+)\s*=(?!=)', storage)
+assert 'SfApplySerial' in storage and 'ProfileGeneration != query->Generation' in storage
 print(f'PASS: XML parsed, {count} project source/header references exist; INF template consistency checked')
