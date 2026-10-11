@@ -22,6 +22,18 @@ function Invoke-HuellaSystem {
         'Cim' { Get-CimInstance @Arguments -ErrorAction Stop }
         'Registry' { Get-ItemPropertyValue @Arguments -ErrorAction Stop }
         'Disks' { Get-Disk -ErrorAction Stop }
+        'SecondaryDisk' {
+            $disk=Get-Disk -Number $Arguments.DiskNumber -ErrorAction Stop
+            $devices=@(Get-CimInstance Win32_DiskDrive -ErrorAction Stop | Where-Object { $_.Index -eq $Arguments.DiskNumber })
+            if ($devices.Count -ne 1) { throw 'La relacion disco/instancia PnP es ambigua.' }
+            [pscustomobject]@{ Number=$disk.Number; IsBoot=$disk.IsBoot; IsSystem=$disk.IsSystem; IsOffline=$disk.IsOffline; PnpInstanceId=[string]$devices[0].PNPDeviceID }
+        }
+        'Checker' {
+            $checkerArgs=[string[]]$Arguments.CommandArguments
+            $output=@(& $Arguments.Path @checkerArgs)
+            if ($LASTEXITCODE -ne 0) { throw "Checker fallo ($LASTEXITCODE). Revisa su salida; no se declara el cambio verificado." }
+            return $output
+        }
         'Adapters' { Get-NetAdapter -IncludeHidden -ErrorAction Stop }
         'NetworkProperty' { Get-NetAdapterAdvancedProperty @Arguments -AllProperties -ErrorAction Stop }
         'SetNetworkProperty' { Set-NetAdapterAdvancedProperty @Arguments -NoRestart -ErrorAction Stop }

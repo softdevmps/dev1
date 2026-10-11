@@ -1,10 +1,10 @@
 ﻿function New-HuellaRow {
     param([string]$Category, [string]$Label, $Value, [string]$Source,
         [string]$Status = 'Leido', [string]$Action = 'Observacion',
-        [string]$Kind = '', [string]$Target = '', [string]$Detail = '')
+        [string]$Kind = '', [string]$Target = '', [string]$Detail = '', [int]$DiskNumber = -1)
     [pscustomobject]@{
         Category=$Category; Label=$Label; Value=(ConvertTo-HuellaText $Value)
-        Source=$Source; Status=$Status; Action=$Action; Kind=$Kind; Target=$Target; Detail=$Detail
+        Source=$Source; Status=$Status; Action=$Action; Kind=$Kind; Target=$Target; Detail=$Detail; DiskNumber=$DiskNumber
     }
 }
 
@@ -35,7 +35,24 @@ function Get-HuellaInventory {
                     $action = if ($group.Category -in @('Placa madre','Sistema','BIOS','Chasis')) { 'Plan de fabricante' } else { 'Observacion' }
                     $value = Get-HuellaProperty $object $field
                     $status = if ([string]::IsNullOrWhiteSpace((ConvertTo-HuellaText $value))) { 'Sin dato' } else { 'Leido' }
-                    $rows.Add((New-HuellaRow $group.Category "$field [$index]" $value "$($group.Class).$field" $status $action 'FirmwareSystem' 'System' $detail))
+                    $kind='FirmwareSystem'; $target='System'; $diskIndex=-1
+                    if ($group.Class -eq 'Win32_DiskDrive' -and $field -eq 'SerialNumber') {
+                        $kind='StorageSerial'; $target=ConvertTo-HuellaText (Get-HuellaProperty $object 'PNPDeviceID')
+                        $diskIndex=[int](Get-HuellaProperty $object 'Index' -1)
+                        $action='Requiere filtro WDK'
+                        $detail='Sustitucion temporal en StorageDeviceProperty. Esta fila viene de CIM y puede conservar un valor en cache; Checker verifica la consulta directa. El firmware y otras consultas conservan su identidad.'
+                        if ($diskIndex -gt 0) {
+                            try {
+                                $null=Get-HuellaSecondaryDisk $diskIndex $target
+                                $profile=Get-HuellaStorageProfile $diskIndex $target
+                                if (-not $profile.Restricted -and $profile.OriginalCapacity -gt 0) {
+                                    $action='Cambiar serial por filtro'
+                                    $detail+=" Perfil activo: $($profile.Enabled); capacidad original: $($profile.OriginalCapacity)."
+                                }
+                            } catch { $detail+=' Filtro no disponible: '+$_.Exception.Message }
+                        } else { $action='Observacion' }
+                    }
+                    $rows.Add((New-HuellaRow $group.Category "$field [$index]" $value "$($group.Class).$field" $status $action $kind $target $detail $diskIndex))
                 }
             }
             if ($objects.Count -eq 0) { $rows.Add((New-HuellaRow $group.Category 'Consulta' '' $group.Class 'Sin dispositivos')) }

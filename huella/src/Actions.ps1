@@ -181,7 +181,7 @@ function Get-HuellaHistory {
     foreach ($file in @(Get-ChildItem -LiteralPath $directory -Filter '*.json' -File | Sort-Object LastWriteTimeUtc -Descending)) {
         try {
             $record=Read-HuellaJson $file.FullName
-            if ($record.Type -eq 'IdentifierChange') { [pscustomobject]@{ Path=$file.FullName; Record=$record } }
+            if ($record.Type -in @('IdentifierChange','StorageSerialProfile')) { [pscustomobject]@{ Path=$file.FullName; Record=$record } }
         } catch { Write-Warning "Respaldo ilegible: $($file.Name): $($_.Exception.Message)" }
     }
 }

@@ -9,7 +9,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 $reader=New-Object Xml.XmlNodeReader([xml](Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Window.xaml') -Raw -Encoding UTF8))
 try { $window=[Windows.Markup.XamlReader]::Load($reader) } finally { $reader.Close() }
 $controls=@{}
-foreach ($name in @('Grid','Details','Status','Value','Refresh','Generate','Apply','Restore','Verify','Export','Admin','HyperV','FirmwarePlan','FirmwareCheck','FirmwareLaunch','AsusPanel','FirmwareHash','UsbLetter','FirmwareCopy')) { $controls[$name]=$window.FindName($name) }
+foreach ($name in @('Grid','Details','Status','Value','Refresh','Generate','Apply','Restore','Verify','Export','Admin','HyperV','FirmwarePlan','FirmwareCheck','FirmwareLaunch','AsusPanel','FirmwareHash','UsbLetter','FirmwareCopy','StorageClear')) { $controls[$name]=$window.FindName($name) }
 $script:inventory=$null; $script:lastBackup=''; $script:planPath=''; $script:packageCheck=$null; $script:plan=$null; $script:capsule=$null
 
 function Show-HuellaError($ErrorRecord) {
@@ -26,6 +26,11 @@ function Select-HuellaFile([bool]$Save,[string]$Filter,[string]$Name='') {
 function Confirm-Huella([string]$Message) {
     return ([Windows.MessageBox]::Show($window,$Message,'Confirmar cambio','YesNo','Warning') -eq 'Yes')
 }
+function Read-HuellaLocalJson([string]$Path) {
+    $file=Get-Item -LiteralPath $Path -ErrorAction Stop
+    if ($file.PSIsContainer -or $file.Length -gt 1MB -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Respaldo invalido, demasiado grande o enlazado.' }
+    Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+}
 function Update-HuellaInventory {
     $controls.Status.Text='Leyendo los dispositivos de este equipo...'
     $window.Dispatcher.Invoke([Action]{},[Windows.Threading.DispatcherPriority]::Render)
@@ -41,6 +46,7 @@ function Show-HuellaResult($Result) {
     if ($status -eq 'Failed') { throw "El cambio fallo: $($Result.Record.Error). El respaldo se conservo en $($Result.Path). Puede haber un cambio parcial; verifica antes de restaurar." }
     $message= switch ($verification) {
         'Verified' { 'El valor leido coincide con el solicitado.' }
+        'CheckerVerified' { 'Checker leyo el serial solicitado en StorageDeviceProperty. El cambio no reprograma el firmware ni cubre todas las rutas de consulta.' }
         'RebootRequired' { 'El nuevo nombre esta configurado. Reinicia Windows y pulsa Verificar respaldo para comprobar el nombre activo.' }
         default { 'El valor aun no coincide. Pulsa Verificar respaldo despues de que el dispositivo termine de reiniciarse.' }
     }
@@ -49,24 +55,34 @@ function Show-HuellaResult($Result) {
 $controls.Grid.Add_SelectionChanged({
     $row=$controls.Grid.SelectedItem
     $controls.Apply.IsEnabled=$false; $controls.Generate.IsEnabled=$false
+    $controls.StorageClear.IsEnabled=$false
     if ($null -ne $row) {
         $controls.Details.Text="$($row.Source)`n$($row.Detail)"
-        $available=$row.Action -in @('Cambiar nombre','Cambiar MAC','MAC virtual de laboratorio')
+        $available=$row.Action -in @('Cambiar nombre','Cambiar MAC','MAC virtual de laboratorio','Cambiar serial por filtro')
         $controls.Apply.IsEnabled=$available
         $controls.Generate.IsEnabled=$available -and $row.Kind -ne 'ComputerName'
+        $controls.Generate.Content=if ($row.Kind -eq 'StorageSerial') { 'Generar serial' } else { 'Generar MAC' }
+        $controls.StorageClear.IsEnabled=$row.Kind -eq 'StorageSerial' -and $row.DiskNumber -gt 0
         $controls.Value.Text=if ($available) { $row.Value } else { '' }
     }
 })
 $controls.Refresh.Add_Click({ try { Update-HuellaInventory } catch { Show-HuellaError $_ } })
-$controls.Generate.Add_Click({ try { $controls.Value.Text=New-HuellaMacAddress } catch { Show-HuellaError $_ } })
+$controls.Generate.Add_Click({
+    try {
+        $controls.Value.Text=if ($controls.Grid.SelectedItem.Kind -eq 'StorageSerial') { 'HF'+[Guid]::NewGuid().ToString('N').Substring(0,8).ToUpperInvariant() } else { New-HuellaMacAddress }
+    } catch { Show-HuellaError $_ }
+})
 $controls.Apply.Add_Click({
     try {
         $row=$controls.Grid.SelectedItem
         if ($null -eq $row) { throw 'Selecciona un identificador.' }
         $extra=if ($row.Kind -eq 'ComputerName') { 'Se requiere reiniciar Windows. No se reinicia automaticamente.' } else { 'Cambiar la MAC del adaptador fisico corta su conexion; no lo hagas durante una sesion remota que dependa de esa interfaz.' }
         if ($row.Kind -eq 'VirtualMacAddress') { $extra='Confirmas que esta es una VM apagada y dedicada al laboratorio.' }
+        if ($row.Kind -eq 'StorageSerial') { $extra="Confirmas el disco secundario #$($row.DiskNumber). Solo se cambia el serial de ciertas respuestas de consulta. No se modifica el firmware; Windows puede conservar datos en cache." }
         if (-not (Confirm-Huella "Cambiar $($row.Label) a $($controls.Value.Text)?`n`n$extra`nSe guarda el valor anterior antes del cambio.")) { return }
-        $result=Invoke-HuellaChange -Kind $row.Kind -Target $row.Target -NewValue $controls.Value.Text -LabVm:([bool]$controls.HyperV.IsChecked) -Confirm:$false
+        $result=if ($row.Kind -eq 'StorageSerial') {
+            Set-HuellaStorageProfile -DiskNumber $row.DiskNumber -PnpInstanceId $row.Target -Serial $controls.Value.Text -PhysicalSecondary -Confirm:$false
+        } else { Invoke-HuellaChange -Kind $row.Kind -Target $row.Target -NewValue $controls.Value.Text -LabVm:([bool]$controls.HyperV.IsChecked) -Confirm:$false }
         Show-HuellaResult $result
         Update-HuellaInventory
     } catch { Show-HuellaError $_ }
@@ -74,8 +90,24 @@ $controls.Apply.Add_Click({
 $controls.Restore.Add_Click({
     try {
         $path=Select-HuellaFile $false 'Respaldos Huella (*.json)|*.json' $script:lastBackup
-        if ($path -eq '' -or -not (Confirm-Huella 'Restaurar el valor de este respaldo? Puede reiniciar el adaptador o requerir reiniciar Windows. Se guardara tambien la configuracion actual.')) { return }
+        if ($path -eq '' -or -not (Confirm-Huella 'Restaurar lo indicado por este respaldo? Puede desactivar un perfil, reiniciar el adaptador o requerir reiniciar Windows. Se comprobara el equipo y el dispositivo.')) { return }
+        $header=Read-HuellaLocalJson $path
+        if ($header.Type -eq 'StorageSerialProfile') {
+            $state=Restore-HuellaStorageProfile $path -Confirm:$false
+            $controls.Status.Text="Perfil de serial activo: $($state.Enabled). Respuestas nuevas del inferior restauradas."
+            Update-HuellaInventory; return
+        }
         Show-HuellaResult (Restore-HuellaChange -Path $path -LabVm:([bool]$controls.HyperV.IsChecked) -Confirm:$false)
+        Update-HuellaInventory
+    } catch { Show-HuellaError $_ }
+})
+$controls.StorageClear.Add_Click({
+    try {
+        $row=$controls.Grid.SelectedItem
+        if ($null -eq $row -or $row.Kind -ne 'StorageSerial') { throw 'Selecciona el serial del disco secundario.' }
+        if (-not (Confirm-Huella "Desactivar el perfil del disco #$($row.DiskNumber) y conservar el serial del inferior en las respuestas nuevas?")) { return }
+        $state=Remove-HuellaStorageProfile $row.DiskNumber $row.Target -Confirm:$false
+        $controls.Status.Text="Perfil activo: $($state.Enabled)."
         Update-HuellaInventory
     } catch { Show-HuellaError $_ }
 })
@@ -83,7 +115,8 @@ $controls.Verify.Add_Click({
     try {
         $path=Select-HuellaFile $false 'Respaldos Huella (*.json)|*.json' $script:lastBackup
         if ($path -eq '') { return }
-        $result=Test-HuellaChange $path
+        $header=Read-HuellaLocalJson $path
+        $result=if ($header.Type -eq 'StorageSerialProfile') { Test-HuellaStorageProfile $path } else { Test-HuellaChange $path }
         $controls.Status.Text="Verificacion: $($result.Verification). Estado registrado: $($result.OperationStatus)."
         $null=[Windows.MessageBox]::Show($window,$controls.Status.Text,'Verificacion','OK','Information')
     } catch { Show-HuellaError $_ }

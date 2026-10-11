@@ -29,6 +29,10 @@ try {
             FailRestart=$false; UnsupportedMac=$false; FailWrites=$false; SecureBootError=$true
             Signature='Valid'; Publisher='CN=LAB, O=Dell Inc., C=US'; ChangedModel=$false; Asus=$false
             UsbUnsafe=$false; UsbRoot=(Join-Path $TestDirectory 'usb')
+            StorageEnabled=$false; StorageGeneration=[uint64]0; StorageTransformed=[uint64]0
+            StorageBoot=$false; StorageFail=$false; StorageRestricted=$false; StorageCapacity=20
+            StorageInstance=33; StoragePnp='SCSI\DISK&VEN_LAB\INSTANCE_LAB'
+            StorageSerial=''; StorageRaceOnClear=$false; StorageMismatch=$false
             Calls=(New-Object 'Collections.Generic.List[string]')
         }
         function script:Invoke-HuellaSystem {
@@ -91,6 +95,27 @@ try {
                 'BitLocker' { throw 'Synthetic unknown BitLocker state' }
                 'UsbVolume' { [pscustomobject]@{ FileSystem='FAT32'; FreeBytes=100MB; BusType='USB'; IsBoot=$script:Fake.UsbUnsafe; IsSystem=$false; IsOffline=$false; IsReadOnly=$false; Root=$script:Fake.UsbRoot } }
                 'LaunchUtility' { [pscustomobject]@{ ExitCode=23 } }
+                'SecondaryDisk' { [pscustomobject]@{ Number=$Arguments.DiskNumber; IsBoot=$script:Fake.StorageBoot; IsSystem=$false; IsOffline=$false; PnpInstanceId=$script:Fake.StoragePnp } }
+                'Checker' {
+                    $command=$Arguments.CommandArguments[0]
+                    if ($script:Fake.StorageFail) { throw 'Synthetic Checker failure' }
+                    if ($command -eq 'serial-clear' -and $script:Fake.StorageRaceOnClear) { $script:Fake.StorageGeneration++; $script:Fake.StorageRaceOnClear=$false }
+                    $generationIndex=[array]::IndexOf($Arguments.CommandArguments,'--generation')
+                    if ($generationIndex -ge 0 -and [uint64]$Arguments.CommandArguments[$generationIndex+1] -ne $script:Fake.StorageGeneration) { throw 'Profile generation changed; request rejected' }
+                    $instanceIndex=[array]::IndexOf($Arguments.CommandArguments,'--instance')
+                    if ($instanceIndex -ge 0 -and [uint32]$Arguments.CommandArguments[$instanceIndex+1] -ne $script:Fake.StorageInstance) { throw 'Profile instance changed; request rejected' }
+                    if ($command -eq 'serial-set') {
+                        $script:Fake.StorageEnabled=$true; $script:Fake.StorageGeneration++; $script:Fake.StorageTransformed++
+                        $script:Fake.StorageSerial=$Arguments.CommandArguments[2]
+                    } elseif ($command -eq 'serial-clear') {
+                        $script:Fake.StorageEnabled=$false; $script:Fake.StorageGeneration++
+                    } elseif ($command -eq 'serial-expect') {
+                        if (-not $script:Fake.StorageEnabled -or $script:Fake.StorageMismatch -or $script:Fake.StorageSerial -ne $Arguments.CommandArguments[2]) { throw 'Serial response mismatch' }
+                        $script:Fake.StorageTransformed++
+                    } elseif ($command -ne 'serial-status') { throw 'Unexpected Checker command' }
+                    $enabled=[int]$script:Fake.StorageEnabled; $restricted=[int]$script:Fake.StorageRestricted
+                    "serial instance=$($script:Fake.StorageInstance) disk=2 enabled=$enabled capacity=$($script:Fake.StorageCapacity) generation=$($script:Fake.StorageGeneration) transformed=$($script:Fake.StorageTransformed) skipped=0 lastResult=0 restricted=$restricted"
+                }
                 default { throw "Unexpected OS call $Operation" }
             }
         }
@@ -280,7 +305,51 @@ try {
     Assert-Throws { Copy-HuellaFirmwareToUsb $capsule.Path 'F' -Confirm:$false } 'ya existe'
     [IO.File]::AppendAllText($capsule.Record.CapsulePath,'tamper')
     Assert-Throws { Copy-HuellaFirmwareToUsb $capsule.Path 'F' -Confirm:$false } 'cambio'
-    Write-Output "PASS: $script:checks checks; synthetic OS only. Windows/WPF, actual MAC changes, Hyper-V and firmware flashing NOT RUN."
+    # Real module orchestration against a synthetic Checker boundary. No native
+    # EXE or kernel driver is executed here, even on Windows.
+    $fakeChecker=Join-Path $temp 'Checker.exe'
+    [IO.File]::WriteAllText($fakeChecker,'NOT EXECUTABLE')
+    $storageArgs=@{ DiskNumber=2; PnpInstanceId='SCSI\DISK&VEN_LAB\INSTANCE_LAB'; Serial='SYNTH-DISK-01'; PhysicalSecondary=$true; Checker=$fakeChecker; Confirm=$false }
+    $state=Get-HuellaStorageProfile -DiskNumber 2 -PnpInstanceId $storageArgs.PnpInstanceId -Checker $fakeChecker
+    Assert (-not $state.Enabled -and $state.Instance -eq 33 -and $state.Scope -eq 'StorageDeviceProperty.SerialNumber') 'Storage profile scope and mapping'
+    & $module { $script:Fake.StorageBoot=$true }
+    Assert-Throws { Set-HuellaStorageProfile @storageArgs } 'arranque/sistema'
+    & $module { $script:Fake.StorageBoot=$false }
+    Assert-Throws { Set-HuellaStorageProfile -DiskNumber 2 -PnpInstanceId 'OTHER' -Serial SYNTH -PhysicalSecondary -Checker $fakeChecker -Confirm:$false } 'instancia'
+    & $module { $script:Fake.StorageRestricted=$true }
+    Assert-Throws { Set-HuellaStorageProfile @storageArgs } 'restringido'
+    & $module { $script:Fake.StorageRestricted=$false; $script:Fake.StorageCapacity=3 }
+    Assert-Throws { Set-HuellaStorageProfile @storageArgs } 'mas largo'
+    & $module { $script:Fake.StorageCapacity=20 }
+    $journalsBefore=@(Get-HuellaHistory).Count
+    Set-HuellaStorageProfile @storageArgs -WhatIf
+    Assert (@(Get-HuellaHistory).Count -eq $journalsBefore -and -not (& $module { $script:Fake.StorageEnabled })) 'Storage WhatIf creates no journal and no change'
+    $storage=Set-HuellaStorageProfile @storageArgs
+    Assert ($storage.Record.Status -eq 'Applied' -and $storage.Record.Verification -eq 'CheckerVerified' -and -not $storage.Record.FirmwareChanged) 'Storage module verifies narrow scope without firmware claims'
+    Assert (Test-Path -LiteralPath $storage.Path) 'Storage journal retained'
+    Assert ((Test-HuellaStorageProfile $storage.Path -Checker $fakeChecker).Verification -eq 'CheckerVerified') 'Storage verification reads the serial response'
+    & $module { $script:Fake.StorageMismatch=$true }
+    Assert-Throws { Test-HuellaStorageProfile $storage.Path -Checker $fakeChecker } 'mismatch'
+    & $module { $script:Fake.StorageMismatch=$false }
+    Assert-Throws { Set-HuellaStorageProfile @storageArgs } 'perfil activo'
+    & $module { $script:Fake.StorageGeneration++ }
+    Assert ((Test-HuellaStorageProfile $storage.Path -Checker $fakeChecker).Verification -eq 'ProfileChangedOrInactive') 'Storage verifier rejects changed generation'
+    Assert-Throws { Restore-HuellaStorageProfile $storage.Path -Checker $fakeChecker -Confirm:$false } 'perfil activo cambio'
+    $disabled=Remove-HuellaStorageProfile -DiskNumber 2 -PnpInstanceId $storageArgs.PnpInstanceId -Checker $fakeChecker -Confirm:$false
+    Assert (-not $disabled.Enabled) 'Explicit storage disable'
+    $storage=Set-HuellaStorageProfile @storageArgs
+    & $module { $script:Fake.StorageRaceOnClear=$true }
+    Assert-Throws { Restore-HuellaStorageProfile $storage.Path -Checker $fakeChecker -Confirm:$false } 'generation changed'
+    Assert (& $module { $script:Fake.StorageEnabled }) 'Restore race cannot clear a newer profile'
+    $null=Remove-HuellaStorageProfile -DiskNumber 2 -PnpInstanceId $storageArgs.PnpInstanceId -Checker $fakeChecker -Confirm:$false
+    $storage=Set-HuellaStorageProfile @storageArgs
+    $disabled=Restore-HuellaStorageProfile $storage.Path -Checker $fakeChecker -Confirm:$false
+    Assert (-not $disabled.Enabled) 'Storage journal restores by disabling its own generation'
+    & $module { $script:Fake.FailWrites=$true }
+    Assert-Throws { Set-HuellaStorageProfile @storageArgs } 'backup failure'
+    Assert (-not (& $module { $script:Fake.StorageEnabled })) 'Storage backup failure causes no activation'
+    & $module { $script:Fake.FailWrites=$false }
+    Write-Output "PASS: $script:checks checks; synthetic OS only. Windows/WPF, real storage/MAC changes, Hyper-V and firmware flashing NOT RUN."
 } finally {
     Remove-Module Huella -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $temp -Recurse -Force

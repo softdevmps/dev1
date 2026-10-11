@@ -26,6 +26,7 @@
         <Button x:Name="Apply" Content="Aplicar y respaldar" IsEnabled="False"/>
         <Button x:Name="Restore" Content="Restaurar respaldo"/>
         <Button x:Name="Verify" Content="Verificar respaldo"/>
+        <Button x:Name="StorageClear" Content="Desactivar serial del filtro" IsEnabled="False"/>
       </WrapPanel>
       <Border BorderBrush="#D8E0EA" BorderThickness="1" Background="White" Padding="12" Margin="0,6,0,12">
         <StackPanel>

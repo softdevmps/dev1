@@ -1,4 +1,4 @@
-; Template: render only for a single secondary virtual lab disk.
+; Template: render only for a single explicitly selected secondary test disk.
 ; Never install the unrendered template or register a disk class-wide filter.
 [Version]
 Signature="$WINDOWS NT$"
@@ -6,7 +6,7 @@ Class=Extension
 ClassGuid={e2f84ce7-8efa-411c-aa69-97454ca4cb57}
 ExtensionId={a73f8fa7-9876-43a6-aed2-4d287f981f45}
 Provider=%Provider%
-DriverVer=10/10/2026,1.0.0.0
+DriverVer=10/10/2026,1.1.0.0
 CatalogFile=StorageFilter.cat
 PnpLockdown=1
 
@@ -49,6 +49,6 @@ StorageFilter.sys=1
 
 [Strings]
 Provider="StorageFilter Lab"
-Description="StorageFilter virtual lab disk extension"
-ServiceDescription="Observational storage upper filter"
+Description="StorageFilter secondary test disk extension"
+ServiceDescription="Storage upper filter with explicit serial profile"
 MediaDescription="StorageFilter installation media"
