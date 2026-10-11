@@ -4,3 +4,6 @@ build/
 *.user
 *.suo
 __pycache__/
+huella/data/
+huella/*.json
+huella/*.html
