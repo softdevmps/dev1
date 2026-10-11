@@ -10,4 +10,4 @@ fi
 "${MINGW_CC:-x86_64-w64-mingw32-gcc}" "$@" \
     -std=c11 -Wall -Wextra -Wconversion -Werror -O2 -municode -static \
     -Wl,--dynamicbase,--nxcompat,--high-entropy-va \
-    checker/checker.c shared/descriptor.c -o out/cross/Checker.exe
+    checker/checker.c shared/descriptor.c shared/transform.c -o out/cross/Checker.exe
