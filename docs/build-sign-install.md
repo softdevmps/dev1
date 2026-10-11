@@ -8,6 +8,8 @@ Prepare una máquina Windows de compilación con Visual Studio 2022, workload C+
 
 Mantenga una VM Windows aislada con un checkpoint, Secure Boot, Code Integrity, DSE y Memory Integrity/HVCI en la configuración normal. Use un disco virtual secundario prescindible, sin paginación, hibernación, volcados, volúmenes del sistema ni datos que conservar. La selección debe ser un hardware ID distinto del disco de arranque y de cualquier otro disco presente. Si el hipervisor asigna el mismo ID a todos los discos, el generador lo rechaza: cambie el controlador virtual/tipo de disco en el laboratorio o use una configuración virtual que publique un ID distinguible.
 
+Se admite tambien el disco fisico secundario de pruebas expresamente seleccionado mediante `-PhysicalSecondary`, en generacion e instalacion. Conserva la exclusion de arranque/sistema, disponibilidad y unicidad del hardware ID. El procedimiento del perfil temporal y sus pruebas esta en [storage-serial.md](storage-serial.md). La validacion inicial del kernel en VM permite recuperar un checkpoint ante un fallo; la firma oficial se exige en ambos modos.
+
 ## Build con errores visibles
 
 En PowerShell desde el checkout:
@@ -46,7 +48,7 @@ El número 1 es un ejemplo; verifique `Get-Disk` y `Win32_DiskDrive` antes de se
 
 El generador rechaza discos boot/system, mapeos ambiguos e IDs compartidos entre discos presentes. Renderiza el hardware ID principal dentro de `StorageFilter.inf`, ajusta DriverVer a la fecha local, copia el .sys y guarda `lab-target.json` para las verificaciones de instalación. No modifica la plantilla ni el código. El INF sólo declara una extensión de dispositivo y un filtro superior de servicio demand-start; no reemplaza disk.sys ni escribe UpperFilters de clase. El binario se ejecuta desde Driver Store (DIRID 13).
 
-Un hardware ID no es un instance ID: un disco conectado más tarde con el mismo ID también puede recibir la extensión. Mantenga el paquete limitado a la VM y vuelva a comprobar IDs antes de cada instalación. No copie este paquete a una máquina de producción. Para distribuir el producto, defina con el fabricante los IDs reales autorizados y la política de orden de filtros.
+Un hardware ID no es un instance ID: un disco conectado más tarde con el mismo ID también puede recibir la extensión. Mantenga el paquete limitado al entorno de pruebas seleccionado y vuelva a comprobar IDs antes de cada instalación. No copie este paquete a una máquina de producción. Para distribuir el producto, defina con el fabricante los IDs reales autorizados y la política de orden de filtros.
 
 ## Validación del paquete
 
@@ -80,6 +82,8 @@ Ejecute elevado después de recibir el paquete firmado:
 ```
 
 El script repite la selección del disco y la unicidad de ID, verifica que el INF coincide con el target, comprueba firmas de kernel y pertenencia de ambos archivos al catálogo y ejecuta PnPUtil `/add-driver ... /install`. Confirme que la extensión se aplicó: staging del Driver Store no prueba adjunción. Reboot de la VM es la opción común; `/restart-device <instance-id>` está disponible desde Windows 10 2004. Verifique el estado de Device Manager/PnP, el log `%windir%\inf\setupapi.dev.log` y `Checker snapshot`.
+
+Para el secundario fisico sustituya `-LabVm` por `-PhysicalSecondary` tanto en `New-LabPackage.ps1` como en `Install-Lab.ps1`. La metadata del paquete debe corresponder al mismo modo y a la misma instancia. La version del paquete nuevo es 1.1.0.0; reconstruya, genere un directorio nuevo y obtenga de nuevo la firma para actualizar un paquete 1.0.0.0. No reutilice su catalogo anterior con el SYS/INF modificados.
 
 Identifique el **oemNN.inf de esta extensión** mediante `pnputil /enum-drivers`, proveedor, nombre original y versión. Para retirarla:
 

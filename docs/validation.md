@@ -14,27 +14,28 @@ El repositorio estaba vacío, con HEAD unborn y sin refs remotos. La implementac
 | IRP / pending | Copia de stack, completions, PendingReturned, remove lock por IRP | I/O verification, cancelación y completions tardías |
 | PnP | START síncrono al inferior, STOP, surprise/remove, detach y liberación | Ciclos y hot-remove con carga |
 | Power | PoCallDriver, flags no pageable para uso especial | Suspend/resume, reboot, hibernación si la VM lo admite |
-| Storage | Observación de StorageDeviceProperty, parser acotado, respuesta sin cambios | Descriptor real y comparaciones antes/después |
-| Ring 3 | Dispositivo seguro, IOCTL buffered v1, snapshot por instancia | ACL con usuario estándar y retiro con handles abiertos |
+| Storage | Observacion por defecto y sustitucion acotada del serial con perfil por instancia, sin escritura de firmware | Descriptor real, activacion, comparaciones y restauracion en secundario seleccionado |
+| Ring 3 | Dispositivo seguro, snapshot v1 y IOCTL buffered de perfil con compare-and-set | ACL, entradas invalidas, generaciones concurrentes y retiro con handles abiertos |
 | Hardware | BusTypeGuid y RemovalPolicy mediante IoGetDevicePropertyData | Resultados del PDO real; propiedades no soportadas diferenciadas |
 | Registro | Callback documentado, altitud configurable, path canonicalizado, unregister | Obtener altitud asignada y ejecutar eventos/descarga |
 | Diagnóstico | DbgPrintEx y contadores/status consultables | Captura WinDbg; ETW/WPP no implementado |
 | Checker | Consultas descriptor/número/longitud, baseline, comparación, workers y entradas inválidas | Ejecutar el EXE contra disco y control reales |
 | Instalación | INF Extension AddFilter, DIRID 13, scripts de selección y verificación | InfVerif, Inf2Cat, firma oficial, staging/attachment |
 
-No se implementa modificación de identificadores ni de tráfico real. El serial sintético se modifica únicamente en tests. Consultas distintas de StorageDeviceProperty se reenvían pero no se decodifican en el kernel. No hay transformación VPD/NVMe, acceso a memoria física ni escritura de sectores.
+Se implementa la sustitucion temporal del serial de `StorageDeviceProperty` activada expresamente para un secundario. El usuario autorizo ampliar el alcance a un disco fisico secundario seleccionado. Las pruebas ejecutadas aqui usan exclusivamente datos sinteticos. No hay transformacion VPD/NVMe, acceso a memoria fisica ni escritura de sectores. La cobertura de otros identificadores se documenta en [identifier-coverage.md](identifier-coverage.md).
 
 ## Comprobaciones ejecutadas
 
 | Comprobación | Resultado y alcance |
 | --- | --- |
-| `tests/run-portable.sh` | PASS, exit 0: **50.314** comprobaciones de descriptor/inmutabilidad con GCC 14.2, ASan y UBSan; ABI y offsets verificados |
-| Fuzz determinista | 50.000 entradas incluidas en el total anterior; no son 50.000 pruebas de kernel |
-| Límites de página | 257 prefijos de 0..256 bytes terminan antes de una página PROT_NONE; incluidos en el total |
-| Consistencia de proyectos | PASS: ambos XML parsean, 14 referencias fuente/header existen, configuraciones Debug/Release x64 e INF coherentes |
-| PowerShell | PASS: 7 archivos parseados mediante PowerShell 7.5.4; **no se ejecutaron sus operaciones Windows** |
+| `tests/run-portable.sh` | PASS, exit 0: **50.314** comprobaciones de descriptor/inmutabilidad y **50.660** de sustitucion acotada/perfiles con GCC 14.2, ASan y UBSan; ABI y offsets verificados |
+| Fuzz determinista | 50.000 entradas en cada suite portable; comprueba rechazo/inmutabilidad y limites, no son pruebas de kernel |
+| Límites de página | 257 prefijos de 0..256 bytes antes de PROT_NONE en cada suite; incluidos en sus totales |
+| Consistencia de proyectos | PASS: ambos XML parsean, 18 referencias fuente/header existen, configuraciones Debug/Release x64 e INF coherentes |
+| PowerShell | PASS: 19 archivos parseados mediante PowerShell 7.5.4 y XAML/20 referencias de controles; **no se ejecutaron sus operaciones Windows** |
+| Huella sintetica | PASS: 2387 comprobaciones, incluido perfil/diario y carrera de restauracion con Checker simulado; no son pruebas de driver |
 | Compilación cruzada de Checker | PASS: GCC MinGW-w64 14-posix, `-Wall -Wextra -Wconversion -Werror`, link PE32+ x64; `out/cross/Checker.exe` generado, **no ejecutado** |
-| Sintaxis de módulos kernel con MinGW | PASS para driver.c, pnp.c, storage.c, control.c, hardware.c y descriptor.c, `-fsyntax-only`; **no es build WDK ni enlazado SYS** |
+| Sintaxis de módulos kernel con MinGW | PASS para driver.c, pnp.c, storage.c, control.c, hardware.c, descriptor.c y transform.c, warnings como errores y `-fsyntax-only`; **no es build WDK ni enlazado SYS** |
 | MSBuild/WDK, InfVerif, Inf2Cat | UNRUN: herramientas Windows ausentes |
 | Carga, consultas reales, ACL, concurrencia Windows | UNRUN: máquina Windows y paquete firmado ausentes |
 | PnP/power/Verifier/HVCI/HLK | UNRUN: requieren la VM y el flujo de firma |
@@ -49,6 +50,8 @@ No se ejecutó una suite con cero tests para afirmar readiness. Los tests que ap
 - Se añadió INITGUID antes de devpkey.h para emitir las definiciones de property keys en una sola unidad de compilación, sin depender de símbolos externos no definidos. El link final WDK sigue pendiente.
 - Se canonicaliza la rama de servicio con ZwQueryKey para que el alias CurrentControlSet no impida reconocer nombres ControlSetNNN de callbacks.
 - Se corrigió el paso explícito del array de argumentos a la función Run-Checker en PowerShell. El parser de PowerShell verifica sintaxis, no la semántica de los cmdlets Windows.
+- La comprobacion estricta de C detecto conversiones de complementos de flags y una constante multichar dependiente del compilador. Se fijaron los casts ULONG y el valor numerico del pool tag conservando sus bytes.
+- La revision del perfil detecto una carrera entre consultar y restaurar. El IOCTL exige ExpectedGeneration; Huella transmite instancia/generacion esperadas hasta Checker y el kernel. La suite sintetica comprueba rechazo de una carrera durante clear. La concurrencia real de IRP/PnP sigue pendiente.
 - La herramienta PowerShell descargada publica el archivo de hashes en UTF-16; se interpretó ese formato y se verificó SHA-256 antes de extraer/ejecutar. Su primer inicio falló porque intentaba usar cache en un home de sólo lectura; se corrigieron las rutas XDG hacia /tmp. No se desactivó ninguna verificación TLS/checksum.
 
 Los paquetes MinGW se obtuvieron desde el repositorio oficial Debian mediante metadata firmada y se extrajeron en `/tmp/sf-mingw`, sin instalación global. PowerShell se obtuvo del release oficial de Microsoft y su hash publicado se verificó. Estos toolchains auxiliares no son parte del WDK ni prueban su compatibilidad.
@@ -72,9 +75,9 @@ Se añadió Compilar-Windows.cmd y COMENZAR-WINDOWS.txt para compilar desde Wind
 ## Acciones pendientes y limitaciones
 
 1. Compilar Debug y Release con Visual Studio/SDK/WDK compatibles, ejecutar análisis estático y corregir cualquier error real que reporte ese toolchain. No se puede anticipar un build aprobado sin ejecutarlo.
-2. Seleccionar una VM/disco virtual secundario con un hardware ID no compartido. El INF es una plantilla intencionalmente no instalable hasta renderizar ese ID; el número de disco no se usa como identidad INF.
+2. Seleccionar una VM/disco virtual secundario para la validacion inicial, o el disco fisico secundario autorizado con `-PhysicalSecondary`, siempre ajeno a arranque/sistema y con hardware ID no compartido. El INF es una plantilla no instalable hasta renderizar ese ID; el numero de disco no se usa como identidad INF.
 3. Ejecutar InfVerif/Inf2Cat con los targets exactos, obtener firma oficial de Microsoft y verificar SYS/INF/CAT. Sin esa firma no se puede cargar con las protecciones exigidas.
-4. Ejecutar las fases baseline/validate, ACL, ciclos, surprise removal y power. Registrar resultados por Windows 10/11 y por configuración HVCI.
+4. Ejecutar las fases baseline/validate con perfil desactivado; luego `Test-StorageSerial.ps1` para activacion/valor/concurrencia/restauracion. Repetir ACL, ciclos, surprise removal y power. Registrar resultados por Windows 10/11 y por configuracion HVCI.
 5. Obtener la altitud oficial si se quiere activar el módulo del registro y ejecutar su prueba específica. La ausencia de altitud no impide desarrollar el resto del filtro, pero deja ese módulo sin validación funcional.
 6. Ejecutar Driver Verifier, pruebas de recursos/cancelación y HLK según el producto. La simulación de escasez debe diferenciar reenvío correcto de cobertura incompleta de observación.
 

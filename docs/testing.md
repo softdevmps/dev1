@@ -2,6 +2,8 @@
 
 Ninguna prueba aquí documentada constituye un resultado hasta que se ejecute y se guarde su evidencia. Los resultados ya ejecutados están en validation.md.
 
+Esta suite comprueba observacion con perfil de serial desactivado. Para la sustitucion temporal autorizada en un secundario fisico, use [storage-serial.md](storage-serial.md) y `Test-StorageSerial.ps1`. Complete tambien los casos PnP/power/Verifier siguientes con el codigo nuevo; la prueba de serial no los sustituye.
+
 ## Preparación de VM
 
 1. VM Windows 10 1903+ o Windows 11 x64, checkpoint antes de instalar, Secure Boot y protecciones normales activas. Para el script de ciclos PnP use Windows 10 2004+.
@@ -77,3 +79,5 @@ Confirme RegistryCallbackStatus == STATUS_SUCCESS. Tome snapshot; cree/cambie/el
 ## Parser local
 
 `tests/run-portable.sh` usa el mismo parser que el controlador con ASan/UBSan, límites de página PROT_NONE, casos deterministas y fuzz seed 0x12345678. También comprueba que no se escriben entradas y el ABI x64. No simula PnP, IRQL, firmas, acceso de kernel ni los tiempos del dispositivo.
+
+La segunda suite usa el transformador compartido y seed 0x1D3A51: valida ASCII/perfil, descriptor completo, capacidad, solapamientos, borrado del serial anterior, conservacion de bytes externos y ausencia de escrituras en errores. Ambas suites se ejecutan sobre buffers sinteticos.

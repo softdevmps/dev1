@@ -48,7 +48,7 @@ Trabaja en tu equipo Windows. El codigo no necesita Linux.
 
 5. FIRMA E INSTALACION
    Un archivo .sys compilado no es todavia un controlador instalable.
-   Hace falta generar el INF para tu disco virtual secundario, validar el
+   Hace falta generar el INF para tu disco secundario seleccionado, validar el
    paquete y obtener la firma oficial de Microsoft antes de cargarlo con
    Secure Boot y las protecciones normales activas.
 
@@ -56,14 +56,25 @@ Trabaja en tu equipo Windows. El codigo no necesita Linux.
    docs\build-sign-install.md
 
    No instales este filtro en el disco de arranque ni en un equipo de
-   produccion. La validacion debe hacerse primero en una maquina virtual
-   Windows con un disco secundario descartable.
+   produccion. Para la validacion inicial del kernel se recomienda una VM
+   con un disco secundario descartable. El modo -PhysicalSecondary permite
+   el disco fisico secundario de pruebas que seleccionaste expresamente.
 
 6. PRUEBAS
    Checker consulta el almacenamiento y verifica los resultados.
    No es el controlador y no puede instalar StorageFilter.sys.
    Las pruebas antes/despues y de concurrencia estan en:
    docs\testing.md
+
+7. PERFIL TEMPORAL DEL SERIAL
+   Huella permite aplicar, verificar y desactivar un perfil del serial del
+   disco secundario cuando Checker y el filtro firmado ya estan instalados.
+   Solo sustituye el campo SerialNumber de StorageDeviceProperty.
+   No reprograma firmware ni cambia todos los identificadores de la PC.
+   Seleccion, comandos y pruebas de restauracion:
+   docs\storage-serial.md
+   Cobertura de los otros identificadores:
+   docs\identifier-coverage.md
 
 ESTADO ACTUAL
 El codigo y los proyectos estan creados. Falta ejecutar esta compilacion
