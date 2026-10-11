@@ -4,7 +4,7 @@
 
 Código y proyectos implementados; **driver no compilado con WDK, no firmado, no instalado y no ejecutado en Windows**. El entorno de esta sesión es Debian 13 x64. No dispone de Windows/WDK, hipervisor Windows ni credenciales de Microsoft Hardware Developer Program. No se declara el driver estable, cargable ni certificado.
 
-El repositorio estaba vacío, con HEAD unborn y sin refs remotos. La implementación se conserva en commits locales en `work`; no se ha publicado/pusheado al remoto. No se han cambiado protecciones del sistema ni configuraciones de firma. El código nuevo fue autorizado como tarea de desarrollo posterior al onboarding inicial.
+El repositorio estaba vacío, con HEAD unborn y sin refs remotos. La implementación está versionada en commits. Publicar el código en GitHub no acredita compilación WDK, firma ni pruebas de kernel. No se han cambiado protecciones del sistema ni configuraciones de firma. El código nuevo fue autorizado como tarea de desarrollo posterior al onboarding inicial.
 
 ## Funcionalidades implementadas
 
