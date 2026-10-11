@@ -1,0 +1,61 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Huella · Windows" Width="1180" Height="790" MinWidth="900" MinHeight="660"
+        Background="#F4F6FA" FontFamily="Segoe UI" FontSize="13" WindowStartupLocation="CenterScreen">
+  <Window.Resources>
+    <Style TargetType="Button"><Setter Property="Padding" Value="12,7"/><Setter Property="Margin" Value="0,0,8,8"/></Style>
+    <Style TargetType="TextBox"><Setter Property="Padding" Value="8,6"/></Style>
+  </Window.Resources>
+  <DockPanel Margin="24">
+    <StackPanel DockPanel.Dock="Top">
+      <TextBlock Text="Huella" FontSize="28" FontWeight="SemiBold" Foreground="#18334C"/>
+      <TextBlock Text="Consulta los identificadores de tu equipo y elige las acciones disponibles para cada dispositivo." Margin="0,3,0,16" TextWrapping="Wrap"/>
+      <WrapPanel>
+        <Button x:Name="Refresh" Content="Actualizar"/>
+        <Button x:Name="Export" Content="Guardar inventario"/>
+        <Button x:Name="Admin" Content="Abrir como administrador"/>
+        <CheckBox x:Name="HyperV" Content="Incluir mis VM de laboratorio (Hyper-V)" VerticalAlignment="Center" Margin="8,0,0,8"/>
+      </WrapPanel>
+    </StackPanel>
+    <StackPanel DockPanel.Dock="Bottom" Margin="0,14,0,0">
+      <TextBlock x:Name="Details" Text="Selecciona una fila." TextWrapping="Wrap" MinHeight="54" Foreground="#42566B"/>
+      <WrapPanel Margin="0,12,0,0">
+        <TextBlock Text="Nuevo valor" VerticalAlignment="Center" Margin="0,0,12,8"/>
+        <TextBox x:Name="Value" Width="260" Margin="0,0,12,8"/>
+        <Button x:Name="Generate" Content="Generar MAC" IsEnabled="False"/>
+        <Button x:Name="Apply" Content="Aplicar y respaldar" IsEnabled="False"/>
+        <Button x:Name="Restore" Content="Restaurar respaldo"/>
+        <Button x:Name="Verify" Content="Verificar respaldo"/>
+      </WrapPanel>
+      <Border BorderBrush="#D8E0EA" BorderThickness="1" Background="White" Padding="12" Margin="0,6,0,12">
+        <StackPanel>
+          <TextBlock Text="Firmware BIOS / UEFI" FontWeight="SemiBold" Margin="0,0,0,8"/>
+          <WrapPanel>
+            <Button x:Name="FirmwarePlan" Content="1. Crear plan y abrir soporte"/>
+            <Button x:Name="FirmwareCheck" Content="2. Revisar paquete oficial"/>
+            <Button x:Name="FirmwareLaunch" Content="3. Abrir asistente del fabricante" IsEnabled="False"/>
+          </WrapPanel>
+          <WrapPanel x:Name="AsusPanel" Visibility="Collapsed" Margin="0,4,0,0">
+            <TextBlock Text="SHA256 del ZIP publicado por ASUS" VerticalAlignment="Center" Margin="0,0,8,8"/>
+            <TextBox x:Name="FirmwareHash" Width="290" Margin="0,0,8,8"/>
+            <TextBlock Text="USB (letra)" VerticalAlignment="Center" Margin="0,0,8,8"/>
+            <TextBox x:Name="UsbLetter" Width="35" MaxLength="1" Margin="0,0,8,8"/>
+            <Button x:Name="FirmwareCopy" Content="Copiar CAP al USB" IsEnabled="False"/>
+          </WrapPanel>
+          <TextBlock Text="La actualizacion de firmware puede conservar los seriales. El fabricante debe confirmar el procedimiento y la compatibilidad de la imagen." TextWrapping="Wrap" Foreground="#42566B"/>
+        </StackPanel>
+      </Border>
+      <TextBlock x:Name="Status" Text="Preparando la lectura..." TextWrapping="Wrap" Foreground="#18334C"/>
+    </StackPanel>
+    <DataGrid x:Name="Grid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single"
+              CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column" Background="White">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Componente" Binding="{Binding Category}" Width="125"/>
+        <DataGridTextColumn Header="Dato" Binding="{Binding Label}" Width="210"/>
+        <DataGridTextColumn Header="Valor actual" Binding="{Binding Value}" Width="*"/>
+        <DataGridTextColumn Header="Lectura" Binding="{Binding Status}" Width="140"/>
+        <DataGridTextColumn Header="Accion disponible" Binding="{Binding Action}" Width="170"/>
+      </DataGrid.Columns>
+    </DataGrid>
+  </DockPanel>
+</Window>
