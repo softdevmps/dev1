@@ -1,0 +1,54 @@
+; Template: render only for a single secondary virtual lab disk.
+; Never install the unrendered template or register a disk class-wide filter.
+[Version]
+Signature="$WINDOWS NT$"
+Class=Extension
+ClassGuid={e2f84ce7-8efa-411c-aa69-97454ca4cb57}
+ExtensionId={a73f8fa7-9876-43a6-aed2-4d287f981f45}
+Provider=%Provider%
+DriverVer=10/10/2026,1.0.0.0
+CatalogFile=StorageFilter.cat
+PnpLockdown=1
+
+[Manufacturer]
+%Provider%=Models,NTamd64.10.0...18362
+
+[Models.NTamd64.10.0...18362]
+%Description%=LabInstall,__LAB_HARDWARE_ID__
+
+[LabInstall.NT]
+CopyFiles=DriverFiles
+
+[LabInstall.NT.Services]
+AddService=StorageFilter,0,FilterService
+
+[LabInstall.NT.Filters]
+AddFilter=StorageFilter,,FilterPosition
+
+[FilterPosition]
+FilterPosition=Upper
+
+[FilterService]
+DisplayName=%ServiceDescription%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%13%\StorageFilter.sys
+
+[DestinationDirs]
+DriverFiles=13
+
+[DriverFiles]
+StorageFilter.sys
+
+[SourceDisksNames]
+1=%MediaDescription%,,,
+
+[SourceDisksFiles]
+StorageFilter.sys=1
+
+[Strings]
+Provider="StorageFilter Lab"
+Description="StorageFilter virtual lab disk extension"
+ServiceDescription="Observational storage upper filter"
+MediaDescription="StorageFilter installation media"

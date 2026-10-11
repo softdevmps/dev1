@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{E1A2A283-4C22-4F72-93F1-6AEBB40F10EF}</ProjectGuid><RootNamespace>StorageFilter</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Driver</ConfigurationType><PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <DriverType>WDM</DriverType><TargetVersion>Windows10</TargetVersion><SignMode>Off</SignMode>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Release'">false</UseDebugLibraries>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <TargetName>StorageFilter</TargetName>
+    <OutDir>$(SolutionDir)out\$(Platform)\$(Configuration)\driver\</OutDir>
+    <IntDir>$(SolutionDir)out\obj\$(Platform)\$(Configuration)\driver\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile><CompileAs>CompileAsC</CompileAs><WarningLevel>Level4</WarningLevel>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <PreprocessorDefinitions>SF_KERNEL=1;_WIN32_WINNT=0x0A00;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <DisableSpecificWarnings>4996;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <Link><AdditionalDependencies>Wdmsec.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="driver.c" />
+    <ClCompile Include="pnp.c" />
+    <ClCompile Include="storage.c" />
+    <ClCompile Include="control.c" />
+    <ClCompile Include="hardware.c" />
+    <ClCompile Include="registry.c" />
+    <ClCompile Include="../shared/descriptor.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="filter.h" />
+    <ClInclude Include="../shared/protocol.h" />
+    <ClInclude Include="../shared/descriptor.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>
