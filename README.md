@@ -1,4 +1,8 @@
-# Windows Storage Upper Filter
+# Huella y Windows Storage Upper Filter
+
+**Huella:** aplicacion Windows para inventario, cambio de nombre, MAC compatible, MAC virtual de laboratorio y revision de asistentes de firmware oficiales. Extrae el repositorio y abre `Abrir-Huella.cmd`. Consulta [uso y capacidades](huella/README.md), [firmware](huella/firmware.md) y [pruebas pendientes](huella/validation.md). Su interfaz y acciones reales aun necesitan validacion en Windows; los cambios fisicos de todos los seriales no estan resueltos mediante una API universal.
+
+**Controlador StorageFilter:**
 
 Proyecto C/WDM para Windows 10 **1903 o posterior** y Windows 11 x64. Observa `IOCTL_STORAGE_QUERY_PROPERTY` / `StorageDeviceProperty`, reenvía los IRP y ofrece un canal de diagnóstico a administradores y SYSTEM. No altera seriales, identificadores ni respuestas del disco. No realiza escrituras en sectores.
 
