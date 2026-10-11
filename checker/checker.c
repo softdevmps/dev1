@@ -247,7 +247,10 @@ static int SerialCommand(const wchar_t *command, DWORD diskNumber, const wchar_t
     ZeroMemory(&original, sizeof(original)); ZeroMemory(&expected, sizeof(expected));
     disk = OpenDisk(diskNumber);
     if (disk == INVALID_HANDLE_VALUE) { Error(L"serial disk"); return 0; }
-    if (!DescribeDisk(disk, diskNumber) || !Query(disk, &original) || !StatusForDisk(diskNumber, &status)) goto Done;
+    if (!DescribeDisk(disk, diskNumber)) goto Done;
+    /* Clearing must remain possible if the descriptor becomes malformed. */
+    if (wcscmp(command, L"serial-clear") != 0 && !Query(disk, &original)) goto Done;
+    if (!StatusForDisk(diskNumber, &status)) goto Done;
     if (wcscmp(command, L"serial-status") == 0) { PrintProfile(&status); ok = 1; goto Done; }
     if ((generation != NULL && status.Generation != *generation) || (instance != 0 && status.Instance != instance)) {
         fputs("Profile instance or generation changed; request rejected\n", stderr); goto Done;
